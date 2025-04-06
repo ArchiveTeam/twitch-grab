@@ -39,7 +39,7 @@ local is_initial_url = true
 
 abort_item = function(item)
   abortgrab = true
-  --killgrab = true
+  killgrab = true
   if not item then
     item = item_name
   end
@@ -90,7 +90,9 @@ find_item = function(url)
   local type_ = nil
   for pattern, name in pairs({
     ["^https?://[^/]*twitch%.tv/videos/([0-9]+)$"]="video",
-    ["^https?://([^/]*s3%.amazonaws%.com/.+)$"]="asset"
+    ["^https?://(assets?%.twitch%.tv/.+)$"]="asset",
+    ["^https?://([^/]*twitchcdn%.net/.+)$"]="asset",
+    ["^https?://([^/]*jtvnw%.net/.+)$"]="asset"
   }) do
     value = string.match(url, pattern)
     type_ = name
@@ -163,7 +165,9 @@ allowed = function(url, parenturl)
 
   local skip = false
   for pattern, type_ in pairs({
-    ["^https?://([^/]*s3%.amazonaws%.com/.+)$"]="asset"
+    ["^https?://(assets?%.twitch%.tv/.+)$"]="asset",
+    ["^https?://([^/]*twitchcdn%.net/.+)$"]="asset",
+    ["^https?://([^/]*jtvnw%.net/.+)$"]="asset"
   }) do
     match = string.match(url, pattern)
     if match then
@@ -310,7 +314,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
           headers["Client-Integrity"] = context["client_integrity"]
         end
       end
-print(url_, post_data)
+--print(url_, post_data)
       if post_data then
         table.insert(urls, {
           url=url_,
@@ -591,7 +595,6 @@ print(url_, post_data)
               if not cursor then
                 error("Could not find comment cursor.")
               end
---if true then return urls end
               error("Multiple comment pages are currently not supported.")
               submit_graphql(cjson.encode({{
                 ["operationName"]="VideoCommentsByOffsetOrCursor",
@@ -671,15 +674,15 @@ wget.callbacks.write_to_warc = function(url, http_stat)
     error("No item name found.")
   end
   is_initial_url = false
-  --[[if string.match(url, "^https?://[^/]*/gql") then
+  if string.match(url["url"], "^https?://[^/]*/gql") then
     local html = read_file(http_stat["local_file"])
     if string.match(html, "VideoCommentsByOffsetOrCursor")
       and string.match(html, '"hasNextPage"%s*:%s*true') then
-      retry_url = true
+      print("This item has multiple comment pages, this is unsupported still.")
       abort_item()
       return false
     end
-  end]]
+  end
   if http_stat["statcode"] ~= 200 then
     retry_url = true
     return false
@@ -726,11 +729,7 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
     io.stdout:write("Server returned bad response. ")
     io.stdout:flush()
     tries = tries + 1
-    local maxtries = 11
-    if status_code == 401 or status_code == 403 then
-      os.execute("sleep 60")
-      tries = maxtries + 1
-    end
+    local maxtries = 5
     if tries > maxtries then
       io.stdout:write(" Skipping.\n")
       io.stdout:flush()
@@ -801,8 +800,8 @@ wget.callbacks.finish = function(start_time, end_time, wall_time, numurls, total
   end
   file:close()
   for key, data in pairs({
-    ["twitch-"] = discovered_items,
-    ["urls-"] = discovered_outlinks
+    ["twitch-9lfrm8le7twbsgnu"] = discovered_items,
+    ["urls-u1842o4e7gbvj72p"] = discovered_outlinks
   }) do
     print("queuing for", string.match(key, "^(.+)%-"))
     local items = nil
@@ -837,11 +836,11 @@ wget.callbacks.before_exit = function(exit_status, exit_status_string)
       abort_item()
     end
   end
-  if killgrab then
-    return wget.exits.IO_FAIL
-  end
   if abortgrab then
     abort_item()
+  end
+  if killgrab then
+    return wget.exits.IO_FAIL
   end
   return exit_status
 end

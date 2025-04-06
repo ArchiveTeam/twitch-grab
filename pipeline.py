@@ -77,11 +77,11 @@ if not WGET_AT:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20250405.01'
+VERSION = '20250406.01'
 USER_AGENT = 'Mozilla/5.0 (X11; Linux i686; rv:124.0) Gecko/20100101 Firefox/124.0'
 TRACKER_ID = 'twitch'
 TRACKER_HOST = 'legacy-api.arpa.li'
-MULTI_ITEM_SIZE = 100
+MULTI_ITEM_SIZE = 1 # KEEP ONE
 
 
 ###########################################################################
@@ -346,7 +346,7 @@ class WgetArgs(object):
 project = Project(
     title=TRACKER_ID,
     project_html='''
-        <img class="project-logo" alt="Project logo" src="" height="50px" title=""/>
+        <img class="project-logo" alt="Project logo" src="https://wiki.archiveteam.org/images/e/ed/Twitch-icon.png" height="50px" title=""/>
         <h2>Twitch <span class="links"><a href="https://twitch.tv/">Website</a> &middot; <a href="http://tracker.archiveteam.org/twitch/">Leaderboard</a> &middot; <a href="https://wiki.archiveteam.org/index.php/Twitch">Wiki</a></span></h2>
         <p>Archiving Twitch, mostly non-video data.</p>
     '''
