@@ -3,6 +3,7 @@ local http = require("socket.http")
 local https = require("ssl.https")
 local cjson = require("cjson")
 local utf8 = require("utf8")
+local base64 = require("base64")
 local html_entities = require("htmlEntities")
 
 cjson.encode_empty_table_as_object(false)
@@ -36,6 +37,46 @@ end
 
 local retry_url = false
 local is_initial_url = true
+
+check_item_complete = function(item)
+  if context["queries_queued"] then
+    local count = 0
+    for _ in pairs(context["queries_todo"]) do
+      count = count + 1
+    end
+    if count > 0 then
+      error("Not all GQL requests were made.")
+    end
+  end
+  local matched = 0
+  for _, pattern in pairs({
+    "/" .. item_value .. "%-low%-0%.jpg$",
+    "/" .. item_value .. "%-high%-0%.jpg$",
+    "/" .. item_value .. "%-info%.json$"
+  }) do
+    for url, _ in pairs(downloaded) do
+      if string.match(url, pattern) then
+        matched = matched + 1
+        break
+      end
+    end
+  end
+  if matched ~= 3 then
+    error("Missing some URLs...")
+  end
+  local found_ts = false
+  if item_type == "video" then
+    for url, _ in pairs(downloaded) do
+      if string.match(url, "%.ts$") then
+        found_ts = true
+        break
+      end
+    end
+    if not found_ts then
+      error("Did not download any .ts URL.")
+    end
+  end
+end
 
 abort_item = function(item)
   abortgrab = true
@@ -122,6 +163,9 @@ set_item = function(url)
     new_item_value = found["value"]
     new_item_name = new_item_type .. ":" .. new_item_value
     if new_item_name ~= item_name then
+      if item_name and not abortgrab then
+        check_item_complete()
+      end
       ids = {}
       context = newcontext
       item_value = new_item_value
@@ -470,9 +514,14 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     local map = {
       ["###VIDEO_ID###"]=item_value,
       ["###USERNAME###"]=context["username"],
-      ["###CHANNEL_ID###"]=context["channel_id"]
+      ["###CHANNEL_ID###"]=context["channel_id"],
+      ["###PLAYBACK_TOKEN###"]=context["playback_token"],
+      ["###PLAYBACK_SIGNATURE###"]=context["playback_signature"]
     }
-    for _, k in pairs({"###VIDEO_ID###", "###USERNAME###", "###CHANNEL_ID###"}) do
+    for _, k in pairs({
+      "###VIDEO_ID###", "###USERNAME###", "###CHANNEL_ID###",
+      "###PLAYBACK_TOKEN###", "###PLAYBACK_SIGNATURE###"
+    }) do
       if string.match(data, k) then
         if map[k] == nil then
           return false
@@ -481,32 +530,45 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       end
     end
     data = string.gsub(data, "\"variables\":%[%]", "\"variables\":{}")
+    if string.match(data, "###") then
+      error("Not all variables filled in for GQL POST data.")
+    end
     submit_post("https://gql.twitch.tv/gql", data)
     local decoded = cjson.decode(data)
+    if decoded["operationName"] then
+      decoded = {decoded}
+    end
     local count = 0
     for _ in pairs(decoded) do
       count = count + 1
     end
     if count == 1 then
       decoded[1]["extensions"] = nil
-      local params = {}
-      json_to_params(params, decoded[1])
-      local keys = {}
-      for k, _ in pairs(params) do
-        table.insert(keys, k)
-      end
-      table.sort(keys)
-      local newurl = "https://gql.twitch.tv/gql?"
-      local i = 1
       while true do
-        if keys[i] == nil then
+        local params = {}
+        json_to_params(params, decoded[1])
+        local keys = {}
+        for k, _ in pairs(params) do
+          table.insert(keys, k)
+        end
+        table.sort(keys)
+        local newurl = "https://gql.twitch.tv/gql?"
+        local i = 1
+        while true do
+          if keys[i] == nil then
+            break
+          end
+          newurl = newurl .. keys[i] .. "=" .. params[keys[i]] .. "&"
+          i = i + 1
+        end
+        newurl = string.match(newurl, "^(.+)[%?&]$")
+        submit_post(newurl, data)
+        if decoded[1]["query"] then
+          decoded[1]["query"] = nil
+        else
           break
         end
-        newurl = newurl .. keys[i] .. "=" .. params[keys[i]] .. "&"
-        i = i + 1
       end
-      newurl = string.match(newurl, "^(.+)[%?&]$")
-      submit_post(newurl, data)
     end
     return true
   end
@@ -523,13 +585,18 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     if string.match(url, "^https?://[^/]*twitch%.tv/videos/[0-9]+$")
       and not string.match(url, "^https?://m%.twitch%.tv/") then
       context["client_id"] = string.match(html, 'clientId="([^"]+)"')
+      context["app_version"] = string.match(html, 'window%.__twilightBuildID="([0-9a-f%-]+)"')
       if not context["client_id"] then
         error("Could not find client ID.")
       end
       if not context["queries_queued"] then
         local graphql_queries = ""
         for line in string.gmatch(read_file("graphql_requests.txt"), "([^\n]+)") do
-          if not string.match(line, "^#") then
+          if not string.match(line, "^#")
+            and (
+              not string.match(line, "PlaybackAccessToken_Template")
+              or item_type == "video"
+            ) then
             graphql_queries = graphql_queries .. line
           end
         end
@@ -551,27 +618,48 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       and (item_type == "video" or item_type == "novideo") then
       json = cjson.decode(html)
       context["client_integrity"] = json["token"]
-      if item_type == "video" then
-        error("Not supported.")
-        submit_post(
-          "https://gql.twitch.tv/gql",
-          cjson.encode({
-            ["operationName"]="PlaybackAccessToken_Template",
-            ["query"]="query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!, $platform: String!) {  streamPlaybackAccessToken(channelName: $login, params: {platform: $platform, playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isLive) {    value    signature   authorization { isForbidden forbiddenReasonCode }   __typename  }  videoPlaybackAccessToken(id: $vodID, params: {platform: $platform, playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isVod) {    value    signature   __typename  }}",
-            ["variables"]={
-              ["isLive"]=false,
-              ["login"]="",
-              ["isVod"]=true,
-              ["vodID"]=item_value,
-              ["playerType"]="site",
-              ["platform"]="web"
-            }
-          })
-        )
+    end
+    if item_type == "video"
+      and string.match(url, "^https?://usher%.ttvnw%.net/.-" .. item_value .. "%.m3u8") then
+      local chosen_bitrate = nil
+      local chosen_url = nil
+      for line in string.gmatch(html, "([^\n]+)") do
+        if string.match(line, "^#") then
+          local bitrate = string.match(line, "BANDWIDTH=([0-9]+)")
+          if bitrate then
+            bitrate = tostring(bitrate)
+            if not chosen_bitrate or bitrate > chosen_bitrate then
+              chosen_bitrate = bitrate
+              chosen_url = nil
+            end
+          end
+        else
+          if chosen_bitrate and not chosen_url then
+            chosen_url = urlparse.absolute(url, line)
+          end
+        end
+      end
+      if not chosen_url then
+        error("No video URL found.")
+      end
+      ids[chosen_url] = true
+      context["m3u8_url"] = chosen_url
+      check(chosen_url)
+    end
+    if context["m3u8_url"] == url then
+      for line in string.gmatch(html, "([^\n]+)") do
+        if not string.match(line, "^#") then
+          local newurl = urlparse.absolute(url, line)
+          ids[newurl] = true
+          check(newurl)
+        end
       end
     end
-    if url == "https://gql.twitch.tv/gql" then
+    if string.match(url, "^https?://gql%.twitch%.tv/gql") then
       json = cjson.decode(html)
+      if json["extensions"] then
+        json = {json}
+      end
       if json["error"] or json["errors"] then
         error("Got error " .. html .. ".")
       end
@@ -581,7 +669,33 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
         end
         local extensions = data["extensions"]
         if extensions then
-          if extensions["operationName"] == "ChannelVideoCore" then
+          operation_name = extensions["operationName"]
+          if operation_name == "PlaybackAccessToken_Template" then
+            context["playback_signature"] = data["data"]["videoPlaybackAccessToken"]["signature"]
+            context["playback_token"] = data["data"]["videoPlaybackAccessToken"]["value"]
+            check(
+              "https://usher.ttvnw.net/vod/" .. item_value .. ".m3u8"
+              .. "?acmb=" .. base64.encode(cjson.encode({["AppVersion"]=context["app_version"]}))
+              .. "&allow_source=true"
+              .. "&browser_family=firefox"
+              .. "&browser_version=128.0"
+              .. "&cdm=wv"
+              .. "&enable_score=true"
+              .. "&os_name=Linux"
+              .. "&os_version=undefined"
+              .. "&p=9000000"
+              .. "&platform=web"
+              .. "&play_session_id=f2624c4302e7c41be9e0d903c21fb8c1"
+              .. "&player_backend=mediaplayer"
+              .. "&player_version=1.39.0-rc.3"
+              .. "&playlist_include_framerate=true"
+              .. "&reassignments_supported=true"
+              .. "&sig=" .. context["playback_signature"]
+              .. "&supported_codecs=av1,h264"
+              .. "&token=" .. urlparse.escape(context["playback_token"])
+              .. "&transcode_mode=cbr_v1"
+            )
+          elseif operation_name == "ChannelVideoCore" then
             if data["data"]["video"]["id"] ~= item_value then
               error("Data for wrong video ID found.")
             end
@@ -591,7 +705,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
               or not context["username"] then
               error("Could not extract channel information.")
             end
-          elseif extensions["operationName"] == "VideoCommentsByOffsetOrCursor" then
+          elseif operation_name == "VideoCommentsByOffsetOrCursor" then
             if data["data"]["video"]["comments"]["pageInfo"]["hasNextPage"] then
               local cursor = nil
               for _, comment_data in pairs(data["data"]["video"]["comments"]["edges"]) do
@@ -628,7 +742,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       for _, queries in pairs(context["queries_todo"]) do
         if not submit_graphql(cjson.encode(queries)) then
           table.insert(new_todo, queries)
-        else
+        elseif not queries["operationName"] then
           for _, query in pairs(queries) do
             query = cjson.encode(query)
             if string.match(query, "###") then
@@ -837,17 +951,10 @@ wget.callbacks.finish = function(start_time, end_time, wall_time, numurls, total
 end
 
 wget.callbacks.before_exit = function(exit_status, exit_status_string)
-  if context["queries_queued"] then
-    local count = 0
-    for _ in pairs(context["queries_todo"]) do
-      count = count + 1
-    end
-    if count > 0 then
-      error("Not all GQL requests were made.")
-    end
-  end
   if abortgrab then
     abort_item()
+  else
+    check_item_complete()
   end
   if killgrab then
     return wget.exits.IO_FAIL
