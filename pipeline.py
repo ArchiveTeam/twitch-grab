@@ -77,11 +77,11 @@ if not WGET_AT:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20250406.01'
+VERSION = '20250408.01'
 USER_AGENT = 'Mozilla/5.0 (X11; Linux i686; rv:124.0) Gecko/20100101 Firefox/124.0'
 TRACKER_ID = 'twitch'
 TRACKER_HOST = 'legacy-api.arpa.li'
-MULTI_ITEM_SIZE = 1 # KEEP ONE
+MULTI_ITEM_SIZE = 100
 
 
 ###########################################################################

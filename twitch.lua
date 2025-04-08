@@ -39,7 +39,7 @@ local is_initial_url = true
 
 abort_item = function(item)
   abortgrab = true
-  killgrab = true
+  --killgrab = true
   if not item then
     item = item_name
   end
@@ -67,6 +67,9 @@ read_file = function(file)
 end
 
 processed = function(url)
+  if string.match(url, "^https?://gql%.twitch%.tv/integrity") then
+    return false
+  end
   if downloaded[url] or addedtolist[url] then
     return true
   end
@@ -289,11 +292,15 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     while string.find(url_, "&amp;") do
       url_ = string.gsub(url_, "&amp;", "&")
     end
+    local is_gql = string.match(url_, "^https?://gql%.twitch%.tv/gql")
+      or string.match(url_, "^https?://gql%.twitch%.tv/integrity")
+    if is_gql and not post_data then
+      return false
+    end
     if not processed(url_ .. tostring(post_data))
       and allowed(url_, origurl) then
       local headers = {}
-      if string.match(url_, "^https?://gql%.twitch%.tv/gql")
-        or string.match(url_, "^https?://gql%.twitch%.tv/integrity") then
+      if is_gql then
         if post_data == nil then
           return nil
         end
@@ -513,7 +520,8 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       or string.match(url, "%.m3u8")
     ) then
     html = read_file(file)
-    if string.match(url, "^https?://[^/]*twitch%.tv/videos/[0-9]+$") then
+    if string.match(url, "^https?://[^/]*twitch%.tv/videos/[0-9]+$")
+      and not string.match(url, "^https?://m%.twitch%.tv/") then
       context["client_id"] = string.match(html, 'clientId="([^"]+)"')
       if not context["client_id"] then
         error("Could not find client ID.")
@@ -537,6 +545,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
           check(urlparse.absolute(url, image))
         end
       end
+      check(urlparse.absolute(url, item_value .. "-strip-0.jpg"))
     end
     if url == "https://gql.twitch.tv/integrity"
       and (item_type == "video" or item_type == "novideo") then
@@ -679,6 +688,7 @@ wget.callbacks.write_to_warc = function(url, http_stat)
     if string.match(html, "VideoCommentsByOffsetOrCursor")
       and string.match(html, '"hasNextPage"%s*:%s*true') then
       print("This item has multiple comment pages, this is unsupported still.")
+      context["queries_todo"] = {}
       abort_item()
       return false
     end
@@ -833,7 +843,7 @@ wget.callbacks.before_exit = function(exit_status, exit_status_string)
       count = count + 1
     end
     if count > 0 then
-      abort_item()
+      error("Not all GQL requests were made.")
     end
   end
   if abortgrab then
