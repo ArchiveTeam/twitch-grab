@@ -48,7 +48,12 @@ check_item_complete = function(item)
       error("Not all GQL requests were made.")
     end
   end
-  if item_type == "asset" then
+  if item_type == "asset"
+    or (
+      (item_type == "video" or item_type == "novideo")
+      and context["existence_checked"]
+      and not context["exists"]
+    ) then
     return nil
   end
   local matched = 0
@@ -171,6 +176,7 @@ set_item = function(url)
       end
       ids = {}
       context = newcontext
+      context["existence_checked"] = false
       item_value = new_item_value
       item_type = new_item_type
       ids[string.lower(item_value)] = true
@@ -368,7 +374,6 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
           headers["Client-Integrity"] = context["client_integrity"]
         end
       end
---print(url_, post_data)
       if post_data then
         table.insert(urls, {
           url=url_,
@@ -537,6 +542,9 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       error("Not all variables filled in for GQL POST data.")
     end
     submit_post("https://gql.twitch.tv/gql", data)
+    if not context["exists"] then
+      return true
+    end
     local decoded = cjson.decode(data)
     if decoded["operationName"] then
       decoded = {decoded}
@@ -673,7 +681,14 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
         local extensions = data["extensions"]
         if extensions then
           operation_name = extensions["operationName"]
-          if operation_name == "PlaybackAccessToken_Template" then
+          if operation_name == "VideoPreviewCard__VideoMoments" then
+            context["exists"] = data["data"]["video"] ~= cjson.null
+            if not context["exists"] then
+              print("Video does not exist.")
+              context["queries_todo"] = {}
+            end
+            context["existence_checked"] = true
+          elseif operation_name == "PlaybackAccessToken_Template" then
             context["playback_signature"] = data["data"]["videoPlaybackAccessToken"]["signature"]
             context["playback_token"] = data["data"]["videoPlaybackAccessToken"]["value"]
             check(
@@ -743,13 +758,22 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     if context["queries_queued"] and context["client_integrity"] then
       local new_todo = {}
       for _, queries in pairs(context["queries_todo"]) do
-        if not submit_graphql(cjson.encode(queries)) then
+        local encoded = cjson.encode(queries)
+        if not context["exists"] then
           table.insert(new_todo, queries)
-        elseif not queries["operationName"] then
-          for _, query in pairs(queries) do
-            query = cjson.encode(query)
-            if string.match(query, "###") then
-              submit_graphql("[" .. query .. "]")
+          if string.match(encoded, "VideoPreviewCard__VideoMoments")
+            and not submit_graphql(encoded) then
+            error("Could not submit previewcard GQL request.")
+          end
+        else
+          if not submit_graphql(encoded) then
+            table.insert(new_todo, queries)
+          elseif not queries["operationName"] then
+            for _, query in pairs(queries) do
+              query = cjson.encode(query)
+              if string.match(query, "###") then
+                submit_graphql("[" .. query .. "]")
+              end
             end
           end
         end
