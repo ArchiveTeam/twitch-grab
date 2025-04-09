@@ -887,7 +887,7 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
     io.stdout:write("Server returned bad response. ")
     io.stdout:flush()
     tries = tries + 1
-    local maxtries = 7
+    local maxtries = 9
     if tries > maxtries then
       io.stdout:write(" Skipping.\n")
       io.stdout:flush()
