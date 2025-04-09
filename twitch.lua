@@ -833,13 +833,20 @@ wget.callbacks.write_to_warc = function(url, http_stat)
       abort_item()
       return false
     end
+    if string.match(html, "\"errors?\"%s*:") then
+      print("Found an error in the GQL response.")
+      retry_url = true
+      return false
+    end
   end
   if http_stat["statcode"] ~= 200 then
+    print("Incorrect status code.")
     retry_url = true
     return false
   end
   if http_stat["len"] == 0
     and http_stat["statcode"] < 300 then
+    print("Found 0 bytes downloaded.")
     retry_url = true
     return false
   end
@@ -880,7 +887,7 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
     io.stdout:write("Server returned bad response. ")
     io.stdout:flush()
     tries = tries + 1
-    local maxtries = 5
+    local maxtries = 7
     if tries > maxtries then
       io.stdout:write(" Skipping.\n")
       io.stdout:flush()
