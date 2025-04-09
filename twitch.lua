@@ -48,6 +48,9 @@ check_item_complete = function(item)
       error("Not all GQL requests were made.")
     end
   end
+  if item_type == "asset" then
+    return nil
+  end
   local matched = 0
   for _, pattern in pairs({
     "/" .. item_value .. "%-low%-0%.jpg$",
