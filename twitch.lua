@@ -86,6 +86,20 @@ check_item_complete = function(item)
   end
 end
 
+match_one = function(data, pattern)
+  local result = nil
+  for s in string.gmatch(data, pattern) do
+    if result then
+      error("Did not expect two matches.")
+    end
+    result = s
+  end
+  if not result then
+    error("Did not find a match.")
+  end
+  return result
+end
+
 abort_item = function(item)
   abortgrab = true
   --killgrab = true
@@ -234,12 +248,18 @@ allowed = function(url, parenturl)
       if new_item ~= item_name
         and not ids[string.lower(string.match(match, "([^:]+)$"))] then
         discover_item(discovered_items, new_item)
-        skip = true
+        if not string.match(match, "^assets%.twitch%.tv/assets/player%-core%-base%-") then
+          skip = true
+        end
       end
     end
   end
   if skip then
     return false
+  end
+
+  if string.match(url, "^https?://assets%.twitch%.tv/assets/player%-core%-base%-") then
+    return true
   end
 
   for _, pattern in pairs({
@@ -616,6 +636,16 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       end
       context["device_id"] = os.getenv("device_id")
       submit_post("https://gql.twitch.tv/integrity", "")
+      local player_core_base_num = match_one(html, "([0-9]+):\"player%-core%-base\"")
+      local player_core_base_version = match_one(html, player_core_base_num .. ":\"([0-9a-f]+)\"")
+      print("Found player-core-base number " .. player_core_base_num .. " and version " .. player_core_base_version .. ".")
+      local player_core_base_url = "https://assets.twitch.tv/assets/player-core-base-" .. player_core_base_version .. ".js"
+      check(player_core_base_url) -- correct, before ids[...]
+      ids[player_core_base_url] = true
+    end
+    if string.match(url, "^https?://assets%.twitch%.tv/assets/player%-core%-base%-") then
+      local version = match_one(html, "%.getVersion=function%(%){return\"([^\"]+)\"}")
+      context["player_version"] = version
     end
     if string.match(url, "/storyboards/[0-9]+%-info%.json$") then
       for _, d in pairs(cjson.decode(html)) do
@@ -691,21 +721,24 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
           elseif operation_name == "PlaybackAccessToken_Template" then
             context["playback_signature"] = data["data"]["videoPlaybackAccessToken"]["signature"]
             context["playback_token"] = data["data"]["videoPlaybackAccessToken"]["value"]
+            if not context["player_version"] then
+              error("No player version was found.")
+            end
             check(
               "https://usher.ttvnw.net/vod/" .. item_value .. ".m3u8"
-              .. "?acmb=" .. base64.encode(cjson.encode({["AppVersion"]=context["app_version"]}))
+              .. "?acmb=" .. urlparse.escape(base64.encode(cjson.encode({["AppVersion"]=context["app_version"]})))
               .. "&allow_source=true"
               .. "&browser_family=firefox"
               .. "&browser_version=128.0"
               .. "&cdm=wv"
-              .. "&enable_score=true"
+            --  .. "&enable_score=true"
               .. "&os_name=Linux"
               .. "&os_version=undefined"
               .. "&p=9000000"
               .. "&platform=web"
-              .. "&play_session_id=f2624c4302e7c41be9e0d903c21fb8c1"
+              .. "&play_session_id=00000000000000000000000000000000"
               .. "&player_backend=mediaplayer"
-              .. "&player_version=1.39.0-rc.3"
+              .. "&player_version=" .. context["player_version"]
               .. "&playlist_include_framerate=true"
               .. "&reassignments_supported=true"
               .. "&sig=" .. context["playback_signature"]
@@ -824,6 +857,11 @@ wget.callbacks.write_to_warc = function(url, http_stat)
     error("No item name found.")
   end
   is_initial_url = false
+  if string.match(url["url"], "^https?://assets%.twitch%.tv/assets/player%-core%-base%-")
+    and ids[url["url"]]
+    and math.random() < 0.95 then
+    return false
+  end
   if string.match(url["url"], "^https?://[^/]*/gql") then
     local html = read_file(http_stat["local_file"])
     if string.match(html, "VideoCommentsByOffsetOrCursor")
