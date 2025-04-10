@@ -75,7 +75,8 @@ check_item_complete = function(item)
   local found_ts = false
   if item_type == "video" then
     for url, _ in pairs(downloaded) do
-      if string.match(url, "%.ts$") then
+      if string.match(url, "%.ts$")
+        or string.match(url, "%.ts%?") then
         found_ts = true
         break
       end
@@ -664,21 +665,31 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       and string.match(url, "^https?://usher%.ttvnw%.net/.-" .. item_value .. "%.m3u8") then
       local chosen_bitrate = nil
       local chosen_url = nil
+      local chunked = nil
       for line in string.gmatch(html, "([^\n]+)") do
         if string.match(line, "^#") then
           local bitrate = string.match(line, "BANDWIDTH=([0-9]+)")
           if bitrate then
-            bitrate = tostring(bitrate)
+            bitrate = tonumber(bitrate)
             if not chosen_bitrate or bitrate > chosen_bitrate then
               chosen_bitrate = bitrate
               chosen_url = nil
             end
           end
+          if string.match(line, "VIDEO=\"chunked\"") then
+            chunked = -1
+          end
         else
           if chosen_bitrate and not chosen_url then
             chosen_url = urlparse.absolute(url, line)
           end
+          if chunked == -1 then
+            chunked = urlparse.absolute(url, line)
+          end
         end
+      end
+      if chunked then
+        chosen_url = chunked
       end
       if not chosen_url then
         error("No video URL found.")
