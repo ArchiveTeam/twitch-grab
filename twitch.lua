@@ -388,12 +388,12 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
         headers["Client-Id"] = context["client_id"]
         headers["Referer"] = "https://twitch.tv/"
         headers["X-Device-Id"] = context["device_id"]
-        if string.match(url_, "tv/gql") then
+        --[[if string.match(url_, "tv/gql") then
           if not context["client_integrity"] then
             error("Client integrity was not found.")
           end
           headers["Client-Integrity"] = context["client_integrity"]
-        end
+        end]]
       end
       if post_data then
         table.insert(urls, {
@@ -616,7 +616,8 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     html = read_file(file)
     if string.match(url, "^https?://[^/]*twitch%.tv/videos/[0-9]+$")
       and not string.match(url, "^https?://m%.twitch%.tv/") then
-      context["client_id"] = string.match(html, 'clientId="([^"]+)"')
+      --context["client_id"] = string.match(html, 'clientId="([^"]+)"')
+      context["client_id"] = "kd1unb4b3q4t58fwlpcbzcbnm76a8fp" -- mobile client ID
       context["app_version"] = string.match(html, 'window%.__twilightBuildID="([0-9a-f%-]+)"')
       if not context["client_id"] then
         error("Could not find client ID.")
@@ -636,7 +637,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
         context["queries_queued"] = true
       end
       context["device_id"] = os.getenv("device_id")
-      submit_post("https://gql.twitch.tv/integrity", "")
+      --submit_post("https://gql.twitch.tv/integrity", "")
       local player_core_base_num = match_one(html, "([0-9]+):\"player%-core%-base\"")
       local player_core_base_version = match_one(html, player_core_base_num .. ":\"([0-9a-f]+)\"")
       print("Found player-core-base number " .. player_core_base_num .. " and version " .. player_core_base_version .. ".")
@@ -656,11 +657,11 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       end
       check(urlparse.absolute(url, item_value .. "-strip-0.jpg"))
     end
-    if url == "https://gql.twitch.tv/integrity"
+    --[[if url == "https://gql.twitch.tv/integrity"
       and (item_type == "video" or item_type == "novideo") then
       json = cjson.decode(html)
       context["client_integrity"] = json["token"]
-    end
+    end]]
     if item_type == "video"
       and string.match(url, "^https?://usher%.ttvnw%.net/.-" .. item_value .. "%.m3u8") then
       local chosen_bitrate = nil
@@ -780,7 +781,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
               if not cursor then
                 error("Could not find comment cursor.")
               end
-              error("Multiple comment pages are currently not supported.")
+              --error("Multiple comment pages are currently not supported.")
               submit_graphql(cjson.encode({{
                 ["operationName"]="VideoCommentsByOffsetOrCursor",
                 ["variables"]={
@@ -799,7 +800,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
         end
       end
     end
-    if context["queries_queued"] and context["client_integrity"] then
+    if context["queries_queued"] then --and context["client_integrity"] then
       local new_todo = {}
       for _, queries in pairs(context["queries_todo"]) do
         local encoded = cjson.encode(queries)
@@ -875,13 +876,13 @@ wget.callbacks.write_to_warc = function(url, http_stat)
   end
   if string.match(url["url"], "^https?://[^/]*/gql") then
     local html = read_file(http_stat["local_file"])
-    if string.match(html, "VideoCommentsByOffsetOrCursor")
+    --[[if string.match(html, "VideoCommentsByOffsetOrCursor")
       and string.match(html, '"hasNextPage"%s*:%s*true') then
       print("This item has multiple comment pages, this is unsupported still.")
       context["queries_todo"] = {}
       abort_item()
       return false
-    end
+    end]]
     if string.match(html, "\"errors?\"%s*:") then
       print("Found an error in the GQL response.")
       retry_url = true
