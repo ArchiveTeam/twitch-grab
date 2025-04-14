@@ -605,6 +605,15 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     return true
   end
 
+  if string.match(url, "^https://[^%.]+%.cloudfront%.net/.+/storyboards/[^/]+$") then
+    check(urlparse.absolute(url, item_value .. "-strip-0.jpg"))
+    check(urlparse.absolute(url, item_value .. "-low-0.jpg"))
+    check(urlparse.absolute(url, item_value .. "-high-0.jpg"))
+    check(urlparse.absolute(url, item_value .. "-high-1.jpg"))
+    check(urlparse.absolute(url, item_value .. "-high-2.jpg"))
+    check(urlparse.absolute(url, item_value .. "-high-3.jpg"))
+  end
+
   if allowed(url)
     and status_code < 300
     and item_type ~= "asset"
@@ -889,7 +898,11 @@ wget.callbacks.write_to_warc = function(url, http_stat)
       return false
     end
   end
-  if http_stat["statcode"] ~= 200 then
+  if http_stat["statcode"] ~= 200
+    and (
+      http_stat["statcode"] ~= 403
+      or not string.match(url["url"], "^https://[^%.]+%.cloudfront%.net/.+/storyboards/[0-9]+%-[a-z]+%-?[0-9]?%.j[ps][go]n?$")
+    ) then
     print("Incorrect status code.")
     retry_url = true
     return false
