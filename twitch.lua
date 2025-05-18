@@ -659,9 +659,11 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       context["player_version"] = version
     end
     if string.match(url, "/storyboards/[0-9]+%-info%.json$") then
-      for _, d in pairs(cjson.decode(html)) do
-        for _, image in pairs(d["images"]) do
-          check(urlparse.absolute(url, image))
+      if not string.match(html, "^%s*<html>") then
+        for _, d in pairs(cjson.decode(html)) do
+          for _, image in pairs(d["images"]) do
+            check(urlparse.absolute(url, image))
+          end
         end
       end
       check(urlparse.absolute(url, item_value .. "-strip-0.jpg"))
