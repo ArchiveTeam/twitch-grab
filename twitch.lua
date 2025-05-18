@@ -907,7 +907,10 @@ wget.callbacks.write_to_warc = function(url, http_stat)
     and http_stat["statcode"] ~= 301
     and (
       http_stat["statcode"] ~= 403
-      or not string.match(url["url"], "^https://[^%.]+%.cloudfront%.net/.+/storyboards/[0-9]+%-[a-z]+%-?[0-9]?%.j[ps][go]n?$")
+      or (
+        not string.match(url["url"], "^https://[^%.]+%.cloudfront%.net/.+/storyboards/[0-9]+%-[a-z]+%-?[0-9]?%.j[ps][go]n?$")
+        and item_type ~= "asset"
+      )
     ) then
     print("Incorrect status code.")
     retry_url = true
