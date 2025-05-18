@@ -771,11 +771,13 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
             if data["data"]["video"]["id"] ~= item_value then
               error("Data for wrong video ID found.")
             end
-            context["channel_id"] = data["data"]["video"]["owner"]["id"]
-            context["username"] = data["data"]["video"]["owner"]["login"]
-            if not context["channel_id"]
-              or not context["username"] then
-              error("Could not extract channel information.")
+            if data["data"]["video"]["owner"] and data["data"]["video"]["owner"] ~= cjson.null then
+              context["channel_id"] = data["data"]["video"]["owner"]["id"]
+              context["username"] = data["data"]["video"]["owner"]["login"]
+              if not context["channel_id"]
+                or not context["username"] then
+                error("Could not extract channel information.")
+              end
             end
           elseif operation_name == "VideoCommentsByOffsetOrCursor" then
             if data["data"]["video"]["comments"]["pageInfo"]["hasNextPage"] then
@@ -822,7 +824,8 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
         else
           if not submit_graphql(encoded) then
             table.insert(new_todo, queries)
-          elseif not queries["operationName"] then
+          end
+          if not queries["operationName"] then
             for _, query in pairs(queries) do
               query = cjson.encode(query)
               if string.match(query, "###") then
