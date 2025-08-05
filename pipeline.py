@@ -77,7 +77,7 @@ if not WGET_AT:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20250715.02'
+VERSION = '20250805.01'
 USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'
 TRACKER_ID = 'twitch'
 TRACKER_HOST = 'legacy-api.arpa.li'
@@ -348,14 +348,14 @@ project = Project(
     title=TRACKER_ID,
     project_html='''
         <img class="project-logo" alt="Project logo" src="https://wiki.archiveteam.org/images/e/ed/Twitch-icon.png" height="50px" title=""/>
-        <h2>Twitch <span class="links"><a href="https://twitch.tv/">Website</a> &middot; <a href="http://tracker.archiveteam.org/twitch/">Leaderboard</a> &middot; <a href="https://wiki.archiveteam.org/index.php/Twitch">Wiki</a></span></h2>
+        <h2>Twitch <span class="links"><a href="https://twitch.tv/">Website</a> &middot; <a href="https://tracker.archiveteam.org/twitch/">Leaderboard</a> &middot; <a href="https://wiki.archiveteam.org/index.php/Twitch">Wiki</a></span></h2>
         <p>Archiving Twitch, mostly non-video data.</p>
     '''
 )
 
 pipeline = Pipeline(
     CheckIP(),
-    GetItemFromTracker('http://{}/{}/multi={}/'
+    GetItemFromTracker('https://{}/{}/multi={}/'
         .format(TRACKER_HOST, TRACKER_ID, MULTI_ITEM_SIZE),
         downloader, VERSION),
     PrepareDirectories(warc_prefix=TRACKER_ID),
@@ -387,7 +387,7 @@ pipeline = Pipeline(
         name='shared:rsync_threads', title='Rsync threads',
         description='The maximum number of concurrent uploads.'),
         UploadWithTracker(
-            'http://%s/%s' % (TRACKER_HOST, TRACKER_ID),
+            'https://%s/%s' % (TRACKER_HOST, TRACKER_ID),
             downloader=downloader,
             version=VERSION,
             files=[
@@ -404,7 +404,7 @@ pipeline = Pipeline(
         ),
     ),
     MaybeSendDoneToTracker(
-        tracker_url='http://%s/%s' % (TRACKER_HOST, TRACKER_ID),
+        tracker_url='https://%s/%s' % (TRACKER_HOST, TRACKER_ID),
         stats=ItemValue('stats')
     )
 )
